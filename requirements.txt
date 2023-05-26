@@ -1,0 +1,9 @@
+torch
+openai
+whisper
+faster_whisper
+speechrecognition
+scipy
+nest_asyncio 
+discord.py
+git+https://github.com/imayhaveborkedit/discord-ext-voice-recv.git
