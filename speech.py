@@ -1,5 +1,6 @@
 import torch 
 
+import os
 import sys
 
 if not 'vits' in sys.path : sys.path.append('vits')
@@ -9,6 +10,8 @@ import utils
 from models import SynthesizerTrn
 from text.symbols import symbols
 from text import text_to_sequence
+
+from scipy.io.wavfile import write
 
 class vits():
     def __init__(self, checkpoint_path, config_path):
@@ -45,3 +48,14 @@ class vits():
         
 def run(model, config):
     return vits(model, config)
+
+# VITS TTS 모델을 불러옵니다.
+dir = os.getcwd() + "/model"
+
+speaker = run(dir + '/model.pth', dir + '/config.json')
+
+# 생성된 음성을 저장합니다.
+def generate(path, message):
+    audio = speaker.infer(message)
+    
+    write(path, 44100, audio)

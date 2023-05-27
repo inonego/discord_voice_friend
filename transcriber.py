@@ -1,6 +1,8 @@
 # Code from https://github.com/davabase/whisper_real_time
 # The code in this repository is public domain.
 
+import torch
+
 import io 
 import asyncio
 import speech_recognition as sr 
@@ -12,11 +14,16 @@ from tempfile import NamedTemporaryFile
 
 from faster_whisper import WhisperModel
 
+import secret
+
 class Transcriber:
+    model = "large-v2" #model
+
+    loaded_model = WhisperModel(model, device="cuda", compute_type="float16")
+    
     def __init__(self, record_timeout = 2, phrase_timeout = 2):
         # Select model from
         # tiny/base/small/medium/large
-        self.model = "large-v2" #model
         # Check non_english for Korean or etc generation
         #self.non_english = non_english
 
@@ -29,19 +36,9 @@ class Transcriber:
 
         self.data_queue = Queue()
 
-        # Load whisper model to trancribe
-        self.load_model()
+        self.run_flag = False
 
-    def load_model(self):
-        # Load / Download model
-        model = self.model
-
-        self.loaded_model = WhisperModel(model, device="cuda", compute_type="float16")
-  
-        # Cue the user that we're ready to go.
-        print("Model loaded.\n")         
-
-    async def execute(self, callback):
+    async def run(self, callback):
         # Current raw audio bytes.
         sample = bytes() 
         # The last time a recording was retreived from the queue.
@@ -51,7 +48,9 @@ class Transcriber:
 
         print("READY : Transriber")
 
-        while True:
+        self.run_flag = True
+
+        while self.run_flag:
             try: 
                 now = datetime.utcnow()
 
@@ -72,31 +71,36 @@ class Transcriber:
 
                     # Write wav data to the temporary file as bytes.
                     with open(audio_path, 'w+b') as f:
-                        f.write(wav_data.read())  
+                        f.write(wav_data.read())   
+                    
+                    # Read the transcription.
+                    segments, _ = self.loaded_model.transcribe(audio_path, language='ko', temperature=0, no_speech_threshold=0.35, vad_filter=True, vad_parameters=dict(threshold=0.6, min_silence_duration_ms=500))
 
-                    def infer():
-                        # Read the transcription.
-                        segments, _ = self.loaded_model.transcribe(audio_path, vad_filter=True)
+                    result = ""
 
-                        result = ""
+                    for segment in segments:
+                        result += segment.text
 
-                        for segment in segments:
-                            result += segment.text
-
-                        # Return transcribed sentences.
-                        #yield result
-                        if not (len(result) == 0 or result.isspace()): callback(result)
-
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(None, infer)
-
+                    # Return transcribed sentences.
+                    #yield result
+                    if not (len(result) == 0 or result.isspace()):
+                        if  result not in secret.noise_word:
+                            def c(): callback(result)
+    
+                            await asyncio.get_event_loop().run_in_executor(None, c)
+                        else:
+                            print(f"노이즈 제거 완료 : {result}")
+                        
                     # Clear the previous sample.
                     sample = bytes()
 
                 # Infinite loops are bad for processors, must sleep.
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.1)
             except KeyboardInterrupt:
-                break
+                pass
+
+    def stop(self):
+        self.run_flag = False
 
     # Callback function for source_callback in execute
     def use_mic(self,  default_microphone = 'pulse', energy_threshold = 1000): 

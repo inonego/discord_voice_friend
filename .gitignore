@@ -3,3 +3,5 @@ generated_audio/
 model/
 
 secret.py
+
+**/__pycache__
